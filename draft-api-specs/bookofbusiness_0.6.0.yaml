@@ -1,0 +1,735 @@
+openapi: 3.1.0
+info:
+  title: Book of Business
+  version: 0.6.0
+  description: >-
+    Book of Business returns the list of policies associated with a producer,
+    firm, or broker relationship. It is a list endpoint only: detail for any
+    individual policy is retrieved from Policy Inquiry.
+
+
+    Consumers should treat policyNumber as the stable identifier for a policy
+    across this specification and Policy Inquiry.
+  license:
+    name: MIT
+    url: https://opensource.org/licenses/MIT
+
+tags:
+  - name: Book of Business
+    description: Policy list retrieval
+
+paths:
+  /v0/policies:
+    get:
+      tags:
+        - Book of Business
+      summary: Retrieve the policy list (book of business)
+      operationId: getPolicyList
+      description: >-
+        Returns the list of policies matching the supplied producer, firm, or
+        broker criteria.
+
+
+        Filters combine with AND: a policy is returned only if it satisfies
+        every supplied filter. Repeating a parameter to request multiple values
+        is not supported. issueDateFrom and issueDateTo together express one
+        inclusive range.
+
+
+        Pagination is not guaranteed to represent a moment-in-time snapshot;
+        policies added or removed after the session starts may not appear in the
+        result set. It does provide stable forward iteration: callers using
+        tokens as returned should not receive skipped or duplicated policies
+        under normal concurrent writes.
+      parameters:
+        - $ref: '#/components/parameters/ApiVersion'
+        - $ref: '#/components/parameters/CorrelationId'
+        - $ref: '#/components/parameters/BrokerNumber'
+        - $ref: '#/components/parameters/ProducerNumber'
+        - $ref: '#/components/parameters/Npn'
+        - $ref: '#/components/parameters/CrdNumber'
+        - $ref: '#/components/parameters/AssociatedFirmId'
+        - $ref: '#/components/parameters/IssueDateFrom'
+        - $ref: '#/components/parameters/IssueDateTo'
+        - $ref: '#/components/parameters/PaginationToken'
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/OrderBy'
+        - $ref: '#/components/parameters/SortOrder'
+      responses:
+        '200':
+          description: Policy list successfully retrieved
+          headers:
+            correlationId:
+              description: >-
+                Echoes the correlationId supplied on the request, for end-to-end
+                traceability.
+              schema:
+                type: string
+                maxLength: 100
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PolicyListResult'
+        '400':
+          $ref: '#/components/responses/BadRequestError'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+        '405':
+          $ref: '#/components/responses/MethodNotAllowedError'
+        '406':
+          $ref: '#/components/responses/NotAcceptableError'
+        '409':
+          $ref: '#/components/responses/ConflictError'
+        '413':
+          $ref: '#/components/responses/PayloadTooLargeError'
+        '415':
+          $ref: '#/components/responses/UnsupportedMediaTypeError'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntityError'
+        '429':
+          $ref: '#/components/responses/TooManyRequestsError'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+        '502':
+          $ref: '#/components/responses/BadGatewayError'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailableError'
+        '504':
+          $ref: '#/components/responses/GatewayTimeoutError'
+
+components:
+  parameters:
+    ApiVersion:
+      name: X-Api-Version
+      in: header
+      required: false
+      description: >-
+        Full specification version the caller is targeting, in MAJOR.MINOR.PATCH
+        form. The major version is carried in the URL path; this header selects
+        the minor and patch version.
+      schema:
+        type: string
+        pattern: '^\d+\.\d+\.\d+$'
+        examples:
+          - 0.6.0
+    CorrelationId:
+      name: correlationId
+      in: header
+      required: false
+      description: >-
+        Unique ID used to track each transaction request across all systems.
+        Echoed back on the response.
+      schema:
+        type: string
+        maxLength: 100
+    BrokerNumber:
+      name: brokerNumber
+      in: header
+      required: false
+      description: Broker number of the caller.
+      schema:
+        type: string
+    ProducerNumber:
+      name: producerNumber
+      in: query
+      required: false
+      description: Filter to a single producer's book of business.
+      schema:
+        type: string
+        maxLength: 30
+    Npn:
+      name: npn
+      in: query
+      required: false
+      description: Filter by the producer's National Producer Number.
+      schema:
+        type: string
+        maxLength: 10
+    CrdNumber:
+      name: crdNumber
+      in: query
+      required: false
+      description: >-
+        Filter by the producer's Central Registration Depository number.
+      schema:
+        type: string
+        maxLength: 10
+    AssociatedFirmId:
+      name: associatedFirmId
+      in: query
+      required: false
+      description: Filter by associated firm or linkage identifier.
+      schema:
+        type: string
+        minLength: 1
+        maxLength: 65
+    IssueDateFrom:
+      name: issueDateFrom
+      in: query
+      required: false
+      description: Inclusive lower bound on policy issue date.
+      schema:
+        type: string
+        format: date
+    IssueDateTo:
+      name: issueDateTo
+      in: query
+      required: false
+      description: Inclusive upper bound on policy issue date.
+      schema:
+        type: string
+        format: date
+    PaginationToken:
+      name: paginationToken
+      in: query
+      required: false
+      description: >-
+        Opaque token identifying the caller's position in the result set. Omit
+        on the first request. Callers MUST treat it as opaque. Implementations
+        SHOULD encode it (for example base64), MUST encode sufficient state to
+        resume iteration including sort order, and MUST NOT include sensitive
+        information, as the token may appear in server logs and browser history.
+        When a token is supplied, orderBy and sortOrder MUST match the values
+        that began the session; otherwise the endpoint MUST reject the request
+        with 400.
+      schema:
+        type: string
+    Limit:
+      name: limit
+      in: query
+      required: false
+      description: >-
+        Maximum number of policies to return per page. The endpoint MAY return
+        fewer than requested; a short page does not indicate the end of the
+        result set. Only the absence of metadata.nextPaginationToken does.
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 500
+        default: 100
+    OrderBy:
+      name: orderBy
+      in: query
+      required: false
+      description: >-
+        Field used to order the result set. MUST NOT change on subsequent
+        requests within the same paginated session. orderBy=policyNumber with
+        sortOrder=asc provides the greatest stability across pages and is the
+        default, because policyNumber is unique within a carrier's result set.
+        policyStatus and issueDate are not unique, so implementations MUST apply
+        policyNumber as a secondary sort key in the same direction to guarantee
+        a stable total order.
+      schema:
+        type: string
+        enum:
+          - policyNumber
+          - policyStatus
+          - issueDate
+        default: policyNumber
+    SortOrder:
+      name: sortOrder
+      in: query
+      required: false
+      description: >-
+        Ordering direction. Must not change on subsequent requests within the
+        same paginated session.
+      schema:
+        type: string
+        enum:
+          - asc
+          - desc
+        default: asc
+
+  responses:
+    BadRequestError:
+      description: Bad Request
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    UnauthorizedError:
+      description: Unauthorized
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    ForbiddenError:
+      description: Forbidden
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    NotFoundError:
+      description: Not Found
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    MethodNotAllowedError:
+      description: Method Not Allowed
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    NotAcceptableError:
+      description: Not Acceptable
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    ConflictError:
+      description: A conflicting policy operation is in progress or the request duplicates an in-flight action.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    PayloadTooLargeError:
+      description: Payload Too Large
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    UnsupportedMediaTypeError:
+      description: Unsupported Media Type
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    UnprocessableEntityError:
+      description: Unprocessable Entity
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    TooManyRequestsError:
+      description: Too Many Requests
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    InternalServerError:
+      description: Internal Server Error
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    BadGatewayError:
+      description: Bad Gateway
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    ServiceUnavailableError:
+      description: Service Unavailable
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    GatewayTimeoutError:
+      description: Gateway Timeout
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+
+  schemas:
+    PolicyListResult:
+      type: object
+      description: >-
+        Composite query result. The plural resource array is named for the
+        resource type and is paired with a sibling metadata object.
+      required:
+        - policies
+        - metadata
+      properties:
+        policies:
+          type: array
+          description: >-
+            Policies matching the query. An empty array with no
+            metadata.nextPaginationToken indicates the end of the result set.
+          items:
+            $ref: '#/components/schemas/PolicyListRow'
+        metadata:
+          $ref: '#/components/schemas/PaginationMetadata'
+
+    PaginationMetadata:
+      type: object
+      description: Pagination metadata for the composite query result.
+      required:
+        - limit
+      properties:
+        limit:
+          type: integer
+          minimum: 1
+          description: >-
+            Page size used for this response. May be lower than the limit
+            requested by the caller.
+        nextPaginationToken:
+          type: string
+          description: >-
+            Token to supply as paginationToken to retrieve the next page.
+            Omitted when no further pages exist; this omission is the
+            end-of-set signal.
+        totalCount:
+          type: integer
+          minimum: 0
+          description: >-
+            Total policies matching the query before pagination. Optional and
+            discouraged unless the business case requires it, as it can be
+            expensive to compute. Carriers unable to compute it efficiently may
+            omit it.
+
+    PolicyListRow:
+      type: object
+      description: A single policy row in the book of business.
+      required:
+        - policyNumber
+        - carrierId
+        - productType
+        - planName
+        - policyStatus
+        - issueDate
+        - ownerDisplayName
+        - producerNumber
+        - policyLastRefreshDateTime
+      dependentRequired:
+        contractValue:
+          - valueAsOfDate
+      properties:
+        policyNumber:
+          type: string
+          minLength: 1
+          maxLength: 30
+          description: >-
+            Carrier-assigned policy identifier, unique within the issuing
+            carrier. Consumers aggregating across carriers MUST use carrierId
+            and policyNumber together as the unique key.
+        carrierId:
+          type: string
+          maxLength: 10
+          description: Carrier identifier.
+        carrierName:
+          type: string
+          maxLength: 200
+          description: Human-readable carrier name.
+        productType:
+          type: string
+          description: Product type for the policy.
+          enum:
+            - FIXED_DEFERRED
+            - VARIABLE_DEFERRED
+            - CONTINGENT_DEFERRED
+            - FIXED_INDEXED
+            - VARIABLE_INDEXED
+            - REGISTERED_INDEX_LINKED
+            - FIXED_IMMEDIATE_INCOME
+            - VARIABLE_IMMEDIATE_INCOME
+            - FIXED_DEFERRED_INCOME
+            - VARIABLE_DEFERRED_INCOME
+            - IMPAIRED_RISK_ANNUITIES
+        planName:
+          type: string
+          maxLength: 200
+          description: Carrier plan name.
+        policyStatus:
+          type: string
+          description: Current policy status.
+          enum:
+            - PENDINGISSUED
+            - ACTIVE
+            - LAPSED
+            - SURRENDERED
+            - TERMINATED
+        issueDate:
+          type: string
+          format: date
+          description: Policy issue date.
+        qualificationType:
+          type: string
+          description: IRS qualification type of the policy.
+          enum:
+            - Non-Qualified
+            - Solo 401k
+            - 401k
+            - 403b
+            - 457 Deferred Compensation
+            - Inherited IRA
+            - IRA Spousal
+            - Educational IRA
+            - IRA
+            - IRA Rollover
+            - IRA Transfer
+            - Roth IRA
+            - Roth IRA - Inherited
+            - SEP IRA
+            - SIMPLE IRA
+            - Pension Plan
+            - Cash Balance Plan-Defined Contributions
+            - Solo Defined Benefit
+            - Cash Balance Plan-Defined Benefit
+            - Profit Sharing Plan
+            - Money Purchase Plan
+            - SAREP
+            - 401g
+            - HR10
+            - Welfare Benefit Plan
+            - Roth 401K
+            - Roth 403b
+            - Roth 457
+        issueState:
+          type: string
+          description: >-
+            State in which the policy was issued. Values represent USPS state,
+            territory, and military mail codes.
+          enum:
+            - AA
+            - AE
+            - AL
+            - AP
+            - AK
+            - AZ
+            - AR
+            - AS
+            - CA
+            - CO
+            - CT
+            - DC
+            - DE
+            - FL
+            - GA
+            - GU
+            - HI
+            - ID
+            - IL
+            - IN
+            - IA
+            - KS
+            - KY
+            - LA
+            - ME
+            - MD
+            - MA
+            - MI
+            - MN
+            - MS
+            - MO
+            - MP
+            - MT
+            - NE
+            - NV
+            - NH
+            - NJ
+            - NM
+            - NY
+            - NC
+            - ND
+            - OH
+            - OK
+            - OR
+            - PA
+            - PR
+            - RI
+            - SC
+            - SD
+            - TN
+            - TX
+            - UM
+            - UT
+            - VT
+            - VA
+            - VI
+            - WA
+            - WV
+            - WI
+            - WY
+        cusip:
+          type: string
+          minLength: 9
+          maxLength: 9
+          pattern: '^[0-9]{3}[A-Z0-9]{5}[0-9]$'
+          description: CUSIP identifier for the policy, where one is assigned.
+        contractValue:
+          type: number
+          description: >-
+            Current contract value, corresponding to Policy Inquiry
+            accountValues.endingAccountValue. Reported as of valueAsOfDate, not
+            as of the time of the request; a paginated result set may contain
+            values calculated on different cycles. Optional, as not every
+            carrier can compute contract value at list scale.
+        valueAsOfDate:
+          type: string
+          format: date
+          description: >-
+            Valuation date for contractValue, corresponding to Policy Inquiry
+            valuesAsOfDate. Required whenever contractValue is present.
+        ownerDisplayName:
+          type: string
+          maxLength: 200
+          description: >-
+            Human-readable owner name, individual or entity. Full party detail
+            is available from Policy Inquiry /parties.
+        producerNumber:
+          type: string
+          maxLength: 30
+          description: >-
+            Carrier-assigned producer identifier, not comparable across
+            carriers. Use externalIds for cross-carrier identification.
+        externalIds:
+          $ref: '#/components/schemas/ProducerExternalIds'
+        policyLastRefreshDateTime:
+          type: string
+          format: date-time
+          description: >-
+            Policy last refresh date and time from the carrier system of record.
+        dataFreshness:
+          $ref: '#/components/schemas/DataFreshness'
+
+    DataFreshness:
+      type: object
+      description: >-
+        Last modification date and time of each Policy Inquiry domain for this
+        policy, so a consumer can retrieve only the domains that have changed.
+        Every field is optional; a carrier unable to source per-domain
+        timestamps supplies only policyLastRefreshDateTime. Each value MUST
+        reflect the last change in the carrier's system of record, never the API
+        call time or a batch job's completion time. There is deliberately no
+        field for Policy Inquiry /values, which is revalued on essentially every
+        cycle and so would always indicate change.
+      properties:
+        dataFreshnessFunds:
+          type: string
+          format: date-time
+          description: >-
+            Last modification of the funds data for this policy. An update is a
+            change to the funds held, their allocations, or unit counts,
+            including adding or removing a fund. Routine revaluation of an
+            unchanged holding is not an update.
+        dataFreshnessParties:
+          type: string
+          format: date-time
+          description: >-
+            Last modification of the parties data for this policy. An update is
+            a change to the addition or removal of a party, or to a party's
+            name, address, contact details, relationship, role, or benefit
+            allocation.
+        dataFreshnessProducer:
+          type: string
+          format: date-time
+          description: >-
+            Last modification of the producer data for this policy. An update is
+            a change to the servicing producer assignment, a commission split,
+            or an agency or firm affiliation.
+        dataFreshnessPayouts:
+          type: string
+          format: date-time
+          description: >-
+            Last modification of the payouts data for this policy. An update is
+            a change to the annuitization or income-payment configuration,
+            including election, start or end date, amount, frequency, or mode.
+        dataFreshnessRiders:
+          type: string
+          format: date-time
+          description: >-
+            Last modification of the riders data for this policy. An update is a
+            change to the addition, removal, exercise, or termination of a
+            rider, or to a rider's benefit amount or charge.
+
+    ProducerExternalIds:
+      type: object
+      description: >-
+        Nationally assigned producer identifiers, usable across carriers where
+        producerNumber is not. Mirrors the Policy Inquiry ProducerExternalIds
+        object.
+      properties:
+        npn:
+          type: string
+          maxLength: 10
+          description: National Producer Number.
+        crdNumber:
+          type: string
+          maxLength: 10
+          description: Central Registration Depository number.
+        agencyId:
+          type: string
+          description: Identifier for the agency associated with the producer.
+        firmId:
+          type: string
+          description: >-
+            Identifier for the broker-dealer or parent firm affiliated with the
+            producer.
+
+    Error:
+      type: object
+      description: >-
+        Standard error object. Fields sit at the top level of the response body.
+      required:
+        - httpStatus
+        - code
+        - timestamp
+        - message
+        - userMessage
+        - correlationId
+      properties:
+        httpStatus:
+          type: integer
+          minimum: 400
+          maximum: 599
+          description: >-
+            Numeric HTTP status code representing the type and severity of the
+            failure.
+        code:
+          type: string
+          pattern: '^[a-zA-Z]+\.[a-zA-Z]+\.[a-zA-Z]+$'
+          description: >-
+            Structured, machine-readable error identifier in the format
+            domain.category.subcategory.
+          examples:
+            - bookofbusiness.pagination.invalidtoken
+        timestamp:
+          type: string
+          format: date-time
+          description: Date and time the error was generated.
+        message:
+          type: string
+          description: >-
+            Developer-focused technical description of the failure, intended for
+            integration and troubleshooting rather than end-user display.
+        userMessage:
+          type: string
+          description: >-
+            Safe, user-friendly explanation suitable for display in advisor
+            portals or consumer-facing applications. Carries no technical
+            detail.
+        correlationId:
+          type: string
+          maxLength: 100
+          description: >-
+            Echoes the inbound request's correlationId, giving partners and
+            carriers a single handle for end-to-end tracing of a failed call.
+        validationErrors:
+          type: array
+          description: >-
+            Field-level or business-rule violations. Present only when the
+            failure is attributable to one or more specific rule violations.
+          items:
+            $ref: '#/components/schemas/ValidationError'
+
+    ValidationError:
+      type: object
+      required:
+        - code
+        - message
+      properties:
+        code:
+          type: string
+          pattern: '^[a-zA-Z]+\.[a-zA-Z]+\.[a-zA-Z]+$'
+          description: >-
+            Structured identifier classifying the individual violation.
+        message:
+          type: string
+          description: >-
+            Description of the individual violation and why it occurred.
